@@ -146,7 +146,7 @@ func _build_hud() -> void:
 	add_child(layer)
 	var panel := PanelContainer.new()
 	panel.position = Vector2(22, 20)
-	panel.custom_minimum_size = Vector2(440, 90)
+	panel.custom_minimum_size = Vector2(500, 135)
 	layer.add_child(panel)
 	var column := VBoxContainer.new()
 	panel.add_child(column)
@@ -161,6 +161,12 @@ func _build_hud() -> void:
 	status_label.text = "Coins: %d  |  Best unlocked: %d" % [total_coins, best_level]
 	var actions := HBoxContainer.new()
 	column.add_child(actions)
+	var level_picker := OptionButton.new()
+	for unlocked in range(1, best_level + 1):
+		level_picker.add_item("Level %03d" % unlocked)
+	level_picker.select(level_number - 1)
+	level_picker.item_selected.connect(_select_level)
+	actions.add_child(level_picker)
 	var restart_button := Button.new()
 	restart_button.text = "Restart"
 	restart_button.pressed.connect(_restart_level)
@@ -224,4 +230,12 @@ func _next_level() -> void:
 	save.set_value("progress", "unlocked", best_level)
 	save.set_value("progress", "coins", total_coins)
 	save.save("user://progress.cfg")
+	get_tree().reload_current_scene()
+
+func _select_level(index: int) -> void:
+	var requested_level := index + 1
+	if requested_level < 1 or requested_level > best_level:
+		return
+	level_number = requested_level
+	_save_progress()
 	get_tree().reload_current_scene()
