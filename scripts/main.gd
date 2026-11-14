@@ -138,3 +138,28 @@ func _build_hud() -> void:
 	status_label.text = "WASD / Arrow Keys: Move     SPACE: Jump"
 	status_label.add_theme_font_size_override("font_size", 15)
 	column.add_child(status_label)
+	_build_touch_controls(layer)
+
+func _build_touch_controls(layer: CanvasLayer) -> void:
+	if not OS.has_feature("mobile") and not DisplayServer.is_touchscreen_available():
+		return
+
+	var screen_size := get_viewport().get_visible_rect().size
+	_add_touch_button(layer, "◀", "move_left", Vector2(28, screen_size.y - 112), Vector2(76, 76))
+	_add_touch_button(layer, "▶", "move_right", Vector2(196, screen_size.y - 112), Vector2(76, 76))
+	_add_touch_button(layer, "▲", "move_forward", Vector2(112, screen_size.y - 196), Vector2(76, 76))
+	_add_touch_button(layer, "▼", "move_back", Vector2(112, screen_size.y - 112), Vector2(76, 76))
+	_add_touch_button(layer, "JUMP", "jump", Vector2(screen_size.x - 142, screen_size.y - 150), Vector2(112, 112))
+
+func _add_touch_button(layer: CanvasLayer, caption: String, action: String, pos: Vector2, button_size: Vector2) -> void:
+	var button := Button.new()
+	button.text = caption
+	button.position = pos
+	button.custom_minimum_size = button_size
+	button.size = button_size
+	button.focus_mode = Control.FOCUS_NONE
+	button.add_theme_font_size_override("font_size", 22 if caption != "JUMP" else 18)
+	button.modulate = Color(1.0, 1.0, 1.0, 0.82)
+	button.button_down.connect(Input.action_press.bind(action))
+	button.button_up.connect(Input.action_release.bind(action))
+	layer.add_child(button)
