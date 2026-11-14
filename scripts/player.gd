@@ -4,6 +4,8 @@ extends CharacterBody3D
 @export var jump_velocity: float = 7.5
 var gravity: float = 20.0
 var visual: MeshInstance3D
+var double_jump_unlocked := false
+var jumps_used := 0
 
 func _ready() -> void:
 	var capsule := CapsuleMesh.new()
@@ -28,11 +30,17 @@ func _ready() -> void:
 	add_child(shape)
 
 func _physics_process(delta: float) -> void:
-	if not is_on_floor():
-		velocity.y -= gravity * delta
-	else:
+	if is_on_floor():
+		jumps_used = 0
 		if Input.is_action_just_pressed("jump"):
 			velocity.y = jump_velocity
+			jumps_used = 1
+	elif Input.is_action_just_pressed("jump") and double_jump_unlocked and jumps_used < 2:
+		velocity.y = jump_velocity * 0.9
+		jumps_used += 1
+
+	if not is_on_floor():
+		velocity.y -= gravity * delta
 
 	var input_dir := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	var direction := Vector3(input_dir.x, 0.0, input_dir.y).normalized()
