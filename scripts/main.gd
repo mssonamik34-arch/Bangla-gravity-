@@ -11,6 +11,11 @@ var total_coins := 0
 var best_level := 1
 var next_button: Button
 var goal_z := -17.0
+var double_jump_unlocked := false
+var network_peer: ENetMultiplayerPeer
+var remote_players: Dictionary = {}
+var address_input: LineEdit
+var network_status: Label
 
 func _ready() -> void:
 	_load_progress()
@@ -18,11 +23,14 @@ func _ready() -> void:
 	_build_player()
 	_build_camera()
 	_build_hud()
+	if double_jump_unlocked:
+		player.double_jump_unlocked = true
 
 func _process(delta: float) -> void:
 	if player == null:
 		return
 	elapsed += delta
+	_update_network(delta)
 	if is_instance_valid(hazard):
 		hazard.rotation.y += delta * (1.0 + float(level_number) * 0.025)
 	if camera:
@@ -31,10 +39,12 @@ func _process(delta: float) -> void:
 		camera.look_at(player.global_position + Vector3(0, 0.5, 0), Vector3.UP)
 	if not won and player.global_position.z < goal_z:
 		won = true
-		total_coins += 100
+		var time_bonus := maxi(0, 60 - int(elapsed))
+		var reward := 100 + time_bonus
+		total_coins += reward
 		best_level = max(best_level, min(level_number + 1, 100))
 		_save_progress()
-		status_label.text = "LEVEL CLEAR!  +100 COINS  |  Total: %d" % total_coins
+		status_label.text = "LEVEL CLEAR!  +%d COINS  |  Total: %d" % [reward, total_coins]
 		status_label.add_theme_color_override("font_color", Color(0.35, 1.0, 0.55))
 		next_button.visible = level_number < 100
 		if level_number >= 100:
@@ -146,7 +156,7 @@ func _build_hud() -> void:
 	add_child(layer)
 	var panel := PanelContainer.new()
 	panel.position = Vector2(22, 20)
-	panel.custom_minimum_size = Vector2(500, 135)
+	panel.custom_minimum_size = Vector2(560, 245)
 	layer.add_child(panel)
 	var column := VBoxContainer.new()
 	panel.add_child(column)
@@ -176,6 +186,27 @@ func _build_hud() -> void:
 	next_button.visible = false
 	next_button.pressed.connect(_next_level)
 	actions.add_child(next_button)
+	var shop_button := Button.new()
+	shop_button.text = "Unlock Double Jump (250)"
+	shop_button.pressed.connect(_buy_double_jump)
+	column.add_child(shop_button)
+	var net_row := HBoxContainer.new()
+	column.add_child(net_row)
+	address_input = LineEdit.new()
+	address_input.placeholder_text = "Host IP (e.g. 192.168.1.5)"
+	address_input.custom_minimum_size = Vector2(230, 38)
+	net_row.add_child(address_input)
+	var host_button := Button.new()
+	host_button.text = "Host LAN"
+	host_button.pressed.connect(_host_game)
+	net_row.add_child(host_button)
+	var join_button := Button.new()
+	join_button.text = "Join"
+	join_button.pressed.connect(_join_game)
+	net_row.add_child(join_button)
+	network_status = Label.new()
+	network_status.text = "Offline mode • LAN multiplayer available"
+	column.add_child(network_status)
 	_build_touch_controls(layer)
 
 func _build_touch_controls(layer: CanvasLayer) -> void:
@@ -209,6 +240,7 @@ func _load_progress() -> void:
 		level_number = clampi(int(save.get_value("progress", "level", 1)), 1, 100)
 		best_level = clampi(int(save.get_value("progress", "unlocked", 1)), 1, 100)
 		total_coins = maxi(0, int(save.get_value("progress", "coins", 0)))
+		double_jump_unlocked = bool(save.get_value("abilities", "double_jump", false))
 	level_number = mini(level_number, best_level)
 
 func _save_progress() -> void:
@@ -216,6 +248,7 @@ func _save_progress() -> void:
 	save.set_value("progress", "level", level_number)
 	save.set_value("progress", "unlocked", best_level)
 	save.set_value("progress", "coins", total_coins)
+	save.set_value("abilities", "double_jump", double_jump_unlocked)
 	save.save("user://progress.cfg")
 
 func _restart_level() -> void:
@@ -239,3 +272,92 @@ func _select_level(index: int) -> void:
 	level_number = requested_level
 	_save_progress()
 	get_tree().reload_current_scene()
+
+
+func _buy_double_jump() -> void:
+	if double_jump_unlocked:
+		status_label.text = "Double Jump already unlocked!"
+		return
+	if total_coins < 250:
+		status_label.text = "Need 250 coins to unlock Double Jump."
+		return
+	total_coins -= 250
+	double_jump_unlocked = true
+	player.double_jump_unlocked = true
+	_save_progress()
+	status_label.text = "DOUBLE JUMP UNLOCKED!  Coins: %d" % total_coins
+
+func _host_game() -> void:
+	network_peer = ENetMultiplayerPeer.new()
+	var error := network_peer.create_server(8910, 4)
+	if error != OK:
+		network_status.text = "Host failed: %s" % error_string(error)
+		return
+	multiplayer.multiplayer_peer = network_peer
+	if not multiplayer.peer_connected.is_connected(_on_peer_connected):
+		multiplayer.peer_connected.connect(_on_peer_connected)
+	if not multiplayer.peer_disconnected.is_connected(_on_peer_disconnected):
+		multiplayer.peer_disconnected.connect(_on_peer_disconnected)
+	network_status.text = "Hosting LAN on port 8910 • Share your local IP"
+
+func _join_game() -> void:
+	var address := address_input.text.strip_edges()
+	if address.is_empty():
+		network_status.text = "Enter the host device's IP address."
+		return
+	network_peer = ENetMultiplayerPeer.new()
+	var error := network_peer.create_client(address, 8910)
+	if error != OK:
+		network_status.text = "Join failed: %s" % error_string(error)
+		return
+	multiplayer.multiplayer_peer = network_peer
+	if not multiplayer.connected_to_server.is_connected(_on_connected_to_server):
+		multiplayer.connected_to_server.connect(_on_connected_to_server)
+	if not multiplayer.connection_failed.is_connected(_on_connection_failed):
+		multiplayer.connection_failed.connect(_on_connection_failed)
+	network_status.text = "Connecting to %s..." % address
+
+func _on_connected_to_server() -> void:
+	network_status.text = "Connected! LAN multiplayer active."
+
+func _on_connection_failed() -> void:
+	network_status.text = "Connection failed. Check IP and same Wi-Fi."
+
+func _on_peer_connected(peer_id: int) -> void:
+	network_status.text = "Player %d joined." % peer_id
+
+func _on_peer_disconnected(peer_id: int) -> void:
+	if remote_players.has(peer_id):
+		remote_players[peer_id].queue_free()
+		remote_players.erase(peer_id)
+	network_status.text = "Player %d left." % peer_id
+
+func _update_network(_delta: float) -> void:
+	if multiplayer.multiplayer_peer == null or multiplayer.multiplayer_peer is OfflineMultiplayerPeer:
+		return
+	if multiplayer.is_server():
+		rpc("_receive_player_position", multiplayer.get_unique_id(), player.global_position)
+	else:
+		rpc_id(1, "_relay_player_position", multiplayer.get_unique_id(), player.global_position)
+
+@rpc("any_peer", "call_remote", "unreliable")
+func _relay_player_position(peer_id: int, position: Vector3) -> void:
+	if multiplayer.is_server():
+		rpc("_receive_player_position", peer_id, position)
+
+@rpc("authority", "call_remote", "unreliable")
+func _receive_player_position(peer_id: int, position: Vector3) -> void:
+	if peer_id == multiplayer.get_unique_id():
+		return
+	if not remote_players.has(peer_id):
+		var avatar := MeshInstance3D.new()
+		var mesh := CapsuleMesh.new()
+		mesh.radius = 0.48
+		mesh.height = 1.65
+		avatar.mesh = mesh
+		var material := StandardMaterial3D.new()
+		material.albedo_color = Color(1.0, 0.55, 0.18)
+		avatar.material_override = material
+		add_child(avatar)
+		remote_players[peer_id] = avatar
+	remote_players[peer_id].global_position = position
