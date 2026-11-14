@@ -258,11 +258,7 @@ func _next_level() -> void:
 	if level_number >= 100 or not won:
 		return
 	level_number += 1
-	var save := ConfigFile.new()
-	save.set_value("progress", "level", level_number)
-	save.set_value("progress", "unlocked", best_level)
-	save.set_value("progress", "coins", total_coins)
-	save.save("user://progress.cfg")
+	_save_progress()
 	get_tree().reload_current_scene()
 
 func _select_level(index: int) -> void:
@@ -343,6 +339,7 @@ func _update_network(_delta: float) -> void:
 @rpc("any_peer", "call_remote", "unreliable")
 func _relay_player_position(peer_id: int, position: Vector3) -> void:
 	if multiplayer.is_server():
+		_receive_player_position(peer_id, position)
 		rpc("_receive_player_position", peer_id, position)
 
 @rpc("authority", "call_remote", "unreliable")
