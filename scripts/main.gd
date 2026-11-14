@@ -6,8 +6,14 @@ var status_label: Label
 var elapsed := 0.0
 var won := false
 var hazard: Node3D
+var level_number := 1
+var total_coins := 0
+var best_level := 1
+var next_button: Button
+var goal_z := -17.0
 
 func _ready() -> void:
+	_load_progress()
 	_build_world()
 	_build_player()
 	_build_camera()
@@ -18,15 +24,21 @@ func _process(delta: float) -> void:
 		return
 	elapsed += delta
 	if is_instance_valid(hazard):
-		hazard.rotation.y += delta * 1.4
+		hazard.rotation.y += delta * (1.0 + float(level_number) * 0.025)
 	if camera:
 		var target := player.global_position + Vector3(0, 7.5, 10.0)
 		camera.global_position = camera.global_position.lerp(target, delta * 4.0)
 		camera.look_at(player.global_position + Vector3(0, 0.5, 0), Vector3.UP)
-	if not won and player.global_position.z < -17.0:
+	if not won and player.global_position.z < goal_z:
 		won = true
-		status_label.text = "LEVEL CLEAR!  +100 COINS"
+		total_coins += 100
+		best_level = max(best_level, min(level_number + 1, 100))
+		_save_progress()
+		status_label.text = "LEVEL CLEAR!  +100 COINS  |  Total: %d" % total_coins
 		status_label.add_theme_color_override("font_color", Color(0.35, 1.0, 0.55))
+		next_button.visible = level_number < 100
+		if level_number >= 100:
+			status_label.text = "YOU COMPLETED ALL 100 LEVELS!  Coins: %d" % total_coins
 	if player.global_position.y < -8.0:
 		player.global_position = Vector3(0, 2, 7)
 		player.velocity = Vector3.ZERO
@@ -54,6 +66,14 @@ func _build_world() -> void:
 	_add_platform(Vector3(0, 1.0, -2.0), Vector3(2.2, 0.35, 2.2), Color(0.95, 0.58, 0.16))
 	_add_platform(Vector3(2.0, 1.6, -7.0), Vector3(2.0, 0.35, 2.0), Color(0.95, 0.58, 0.16))
 	_add_platform(Vector3(-1.8, 1.0, -10.0), Vector3(2.0, 0.35, 2.0), Color(0.95, 0.58, 0.16))
+	# Generate extra stepping stones as difficulty increases.
+	var extra_steps := mini(2 + int(level_number / 8), 14)
+	for i in range(extra_steps):
+		var step_z := -1.0 - float(i) * 0.92
+		var side := 1.0 if (i + level_number) % 2 == 0 else -1.0
+		var step_x := side * (1.0 + float((i * 3 + level_number) % 3) * 0.55)
+		var step_y := 1.0 + float((i + level_number) % 3) * 0.28
+		_add_platform(Vector3(step_x, step_y, step_z), Vector3(1.25, 0.28, 1.25), Color(0.25 + float(level_number % 5) * 0.1, 0.65, 0.9))
 
 	hazard = Node3D.new()
 	hazard.position = Vector3(0, 0.55, -5.0)
@@ -131,13 +151,25 @@ func _build_hud() -> void:
 	var column := VBoxContainer.new()
 	panel.add_child(column)
 	var title := Label.new()
-	title.text = "BANGLA GRAVITY  •  LEVEL 01"
+	title.text = "BANGLA GRAVITY  •  LEVEL %03d / 100" % level_number
 	title.add_theme_font_size_override("font_size", 22)
 	column.add_child(title)
 	status_label = Label.new()
 	status_label.text = "WASD / Arrow Keys: Move     SPACE: Jump"
 	status_label.add_theme_font_size_override("font_size", 15)
 	column.add_child(status_label)
+	status_label.text = "Coins: %d  |  Best unlocked: %d" % [total_coins, best_level]
+	var actions := HBoxContainer.new()
+	column.add_child(actions)
+	var restart_button := Button.new()
+	restart_button.text = "Restart"
+	restart_button.pressed.connect(_restart_level)
+	actions.add_child(restart_button)
+	next_button = Button.new()
+	next_button.text = "Next Level  →"
+	next_button.visible = false
+	next_button.pressed.connect(_next_level)
+	actions.add_child(next_button)
 	_build_touch_controls(layer)
 
 func _build_touch_controls(layer: CanvasLayer) -> void:
@@ -163,3 +195,33 @@ func _add_touch_button(layer: CanvasLayer, caption: String, action: String, pos:
 	button.button_down.connect(Input.action_press.bind(action))
 	button.button_up.connect(Input.action_release.bind(action))
 	layer.add_child(button)
+
+
+func _load_progress() -> void:
+	var save := ConfigFile.new()
+	if save.load("user://progress.cfg") == OK:
+		level_number = clampi(int(save.get_value("progress", "level", 1)), 1, 100)
+		best_level = clampi(int(save.get_value("progress", "unlocked", 1)), 1, 100)
+		total_coins = maxi(0, int(save.get_value("progress", "coins", 0)))
+	level_number = mini(level_number, best_level)
+
+func _save_progress() -> void:
+	var save := ConfigFile.new()
+	save.set_value("progress", "level", level_number)
+	save.set_value("progress", "unlocked", best_level)
+	save.set_value("progress", "coins", total_coins)
+	save.save("user://progress.cfg")
+
+func _restart_level() -> void:
+	get_tree().reload_current_scene()
+
+func _next_level() -> void:
+	if level_number >= 100 or not won:
+		return
+	level_number += 1
+	var save := ConfigFile.new()
+	save.set_value("progress", "level", level_number)
+	save.set_value("progress", "unlocked", best_level)
+	save.set_value("progress", "coins", total_coins)
+	save.save("user://progress.cfg")
+	get_tree().reload_current_scene()
