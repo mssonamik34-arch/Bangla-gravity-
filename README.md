@@ -12,6 +12,7 @@ A 3D cartoon-style crazy physics platform game built with **Godot 4**.
 ## Controls
 - **WASD / Arrow keys:** Move
 - **Space:** Jump
+- **Android touchscreen:** On-screen directional buttons and Jump button
 
 ## Planned game
 - 100+ offline levels with varied mechanics
@@ -25,7 +26,7 @@ A 3D cartoon-style crazy physics platform game built with **Godot 4**.
 ## Run
 Open this folder in Godot 4.2+ and press **F5**.
 
-This is an early prototype. Android touch controls, multiplayer networking, progression, audio, menus and Play Store release configuration are not implemented yet.
+This is an early prototype. Android touch controls have been added to the code but still need on-device testing. Multiplayer networking, progression, audio, menus and Play Store release configuration are not implemented yet.
 
 ## License
 MIT. See [LICENSE](LICENSE).
